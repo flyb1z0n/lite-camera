@@ -347,8 +347,8 @@
         // Generate thumbnail
         const thumbUrl = await createThumbnail(blob);
         const photo = { name, thumbUrl, fileHandle };
-        photos.push(photo);
-        addFilmstripItem(photo, photos.length - 1);
+        photos.unshift(photo);
+        renderFilmstrip();
       } catch (err) {
         console.error("Failed to save photo:", err);
         // Directory might be gone — reset handle and re-prompt
