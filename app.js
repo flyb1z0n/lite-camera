@@ -219,6 +219,7 @@ if ("serviceWorker" in navigator) {
         }
         countdownOverlay.textContent = remaining;
         countdownOverlay.classList.remove("hidden");
+        playTickSound();
         // Re-trigger animation
         countdownOverlay.style.animation = "none";
         countdownOverlay.offsetHeight; // force reflow
@@ -242,6 +243,21 @@ if ("serviceWorker" in navigator) {
 
   // --- Shutter sound ---
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function playTickSound() {
+    const now = audioCtx.currentTime;
+    const len = 0.06;
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * len, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / audioCtx.sampleRate;
+      data[i] = Math.sin(2 * Math.PI * 800 * t) * Math.exp(-t * 60) * 0.4;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(now);
+  }
 
   function playShutterSound() {
     const now = audioCtx.currentTime;
@@ -573,6 +589,18 @@ if ("serviceWorker" in navigator) {
 
     captureBtn.addEventListener("click", capture);
     pickFolderBtn.addEventListener("click", pickDirectory);
+
+    const filmstripToggle = document.getElementById("filmstrip-toggle");
+    const filmstripContainer = document.querySelector(".filmstrip-container");
+    if (localStorage.getItem("lite-camera-filmstrip-hidden") === "true") {
+      filmstripContainer.classList.add("hidden");
+      filmstripToggle.classList.add("collapsed");
+    }
+    filmstripToggle.addEventListener("click", () => {
+      const hidden = filmstripContainer.classList.toggle("hidden");
+      filmstripToggle.classList.toggle("collapsed", hidden);
+      localStorage.setItem("lite-camera-filmstrip-hidden", hidden);
+    });
 
 
 

@@ -39,7 +39,7 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   background: #000;
   transform: scaleX(-1);
 }
@@ -273,12 +273,60 @@ html, body {
 }
 
 /* Filmstrip */
+.filmstrip-wrapper {
+  width: 100%;
+  position: relative;
+}
+
+.filmstrip-toggle {
+  position: absolute;
+  right: 12px;
+  top: -32px;
+  width: 40px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s, background 0.2s;
+}
+
+.filmstrip-toggle svg {
+  transition: transform 0.3s ease;
+}
+
+.filmstrip-toggle:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.filmstrip-toggle.collapsed svg {
+  transform: rotate(180deg);
+}
+
 .filmstrip-container {
   width: 100%;
   min-height: 80px;
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  transition: min-height 0.3s ease, max-height 0.3s ease, opacity 0.3s ease;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.filmstrip-container.hidden {
+  min-height: 0;
+  max-height: 0;
+  opacity: 0;
+  border-top: none;
 }
 
 .filmstrip {
