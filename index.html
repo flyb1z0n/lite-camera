@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lite Camera</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Fullscreen viewfinder -->
+    <video id="viewfinder" autoplay playsinline muted></video>
+
+    <!-- Overlays on viewfinder -->
+    <div id="countdown-overlay" class="countdown-overlay hidden"></div>
+    <div id="flash-overlay" class="flash-overlay"></div>
+
+    <!-- Error message -->
+    <div id="error-message" class="error-message hidden">
+      <p id="error-text"></p>
+      <button id="error-action" class="btn-retry">Retry</button>
+    </div>
+
+    <!-- Top bar -->
+    <div class="top-bar">
+      <select id="camera-select" aria-label="Select camera">
+        <option value="">Loading cameras...</option>
+      </select>
+    </div>
+
+    <!-- Folder status banner -->
+    <div id="folder-banner" class="folder-banner hidden">
+      <span>No folder selected — photos won't be saved</span>
+      <button id="pick-folder-btn" class="btn-pick-folder">Pick Folder</button>
+    </div>
+
+    <!-- Bottom controls -->
+    <div class="bottom-area">
+      <div class="controls">
+        <div class="timer-buttons">
+          <button class="btn-timer" data-seconds="3">3s</button>
+          <button class="btn-timer" data-seconds="5">5s</button>
+          <button class="btn-timer" data-seconds="10">10s</button>
+        </div>
+        <button id="capture-btn" class="btn-capture" aria-label="Capture photo">
+          <span class="btn-capture-inner"></span>
+        </button>
+      </div>
+      <div class="filmstrip-container">
+        <div id="filmstrip" class="filmstrip"></div>
+      </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox hidden">
+      <div class="lightbox-backdrop"></div>
+      <div class="lightbox-content">
+        <img id="lightbox-img" src="" alt="Photo preview">
+        <div class="lightbox-actions">
+          <button id="lightbox-delete" class="btn-lightbox btn-delete">Delete</button>
+          <button id="lightbox-close" class="btn-lightbox btn-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Browser not supported -->
+    <div id="unsupported-overlay" class="unsupported-overlay hidden">
+      <div class="unsupported-message">
+        <h2>Browser Not Supported</h2>
+        <p>Lite Camera requires the File System Access API.<br>Please use Chrome, Edge, or another Chromium-based browser.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
