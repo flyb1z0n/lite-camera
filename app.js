@@ -74,10 +74,8 @@
         req.onerror = () => reject(req.error);
       });
       if (handle) {
-        const perm = await handle.queryPermission({ mode: "readwrite" });
-        if (perm === "granted") {
-          dirHandle = handle;
-        }
+        // Always restore the handle — permission will be requested on user gesture if needed
+        dirHandle = handle;
       }
     } catch {
       // No stored handle or permission denied — that's fine
@@ -409,12 +407,35 @@
       filmstrip.appendChild(empty);
       return;
     }
-    photos.forEach((photo, i) => addFilmstripItem(photo, i));
+    // Photos array is already sorted newest-first, render in order
+    photos.forEach((photo, i) => {
+      const empty = filmstrip.querySelector(".filmstrip-empty");
+      if (empty) empty.remove();
+
+      const item = document.createElement("div");
+      item.className = "filmstrip-item";
+      item.dataset.index = i;
+
+      const img = document.createElement("img");
+      img.src = photo.thumbUrl;
+      img.alt = photo.name;
+      item.appendChild(img);
+
+      item.addEventListener("click", () => openLightbox(i));
+      filmstrip.appendChild(item);
+    });
   }
 
   async function loadPhotosFromDir() {
     photos = [];
     if (!dirHandle) {
+      renderFilmstrip();
+      return;
+    }
+
+    // Check permission before trying to read
+    const perm = await dirHandle.queryPermission({ mode: "readwrite" });
+    if (perm !== "granted") {
       renderFilmstrip();
       return;
     }
@@ -427,13 +448,27 @@
         }
       }
 
-      // Sort by name descending (newest first)
-      entries.sort((a, b) => b.name.localeCompare(a.name));
-
+      // Read file metadata to sort by creation date
+      const filesWithMeta = [];
       for (const fileHandle of entries) {
-        const file = await fileHandle.getFile();
-        const thumbUrl = await createThumbnail(file);
-        photos.push({ name: fileHandle.name, thumbUrl, fileHandle });
+        try {
+          const file = await fileHandle.getFile();
+          filesWithMeta.push({ fileHandle, file, lastModified: file.lastModified });
+        } catch (err) {
+          console.warn("Skipping unreadable file:", fileHandle.name, err);
+        }
+      }
+
+      // Sort by date descending (newest first)
+      filesWithMeta.sort((a, b) => b.lastModified - a.lastModified);
+
+      for (const { fileHandle, file } of filesWithMeta) {
+        try {
+          const thumbUrl = await createThumbnail(file);
+          photos.push({ name: fileHandle.name, thumbUrl, fileHandle });
+        } catch (err) {
+          console.warn("Skipping unreadable file:", fileHandle.name, err);
+        }
       }
     } catch (err) {
       console.error("Failed to load photos from directory:", err);
@@ -528,6 +563,7 @@
 
     captureBtn.addEventListener("click", capture);
     pickFolderBtn.addEventListener("click", pickDirectory);
+
 
 
     lightboxClose.addEventListener("click", closeLightbox);
