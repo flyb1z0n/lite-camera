@@ -39,7 +39,8 @@
 
   async function init() {
     await restoreDirHandle();
-    await startCamera();
+    const savedDeviceId = localStorage.getItem("lite-camera-deviceId");
+    await startCamera(savedDeviceId || undefined);
     await loadPhotosFromDir();
     bindEvents();
   }
@@ -135,6 +136,10 @@
       hideError();
       await refreshCameraList();
     } catch (err) {
+      if (deviceId && err.name === "OverconstrainedError") {
+        localStorage.removeItem("lite-camera-deviceId");
+        return startCamera();
+      }
       showError(
         err.name === "NotAllowedError"
           ? "Camera access was denied. Please allow camera access in your browser settings and try again."
@@ -552,6 +557,7 @@
   // --- Events ---
   function bindEvents() {
     cameraSelect.addEventListener("change", (e) => {
+      localStorage.setItem("lite-camera-deviceId", e.target.value);
       startCamera(e.target.value);
     });
 
