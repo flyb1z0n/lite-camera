@@ -29,20 +29,20 @@ if ("serviceWorker" in navigator) {
   let timerSeconds = 0;
   let countdownInterval = null;
   let dirHandle = null;
-  let photos = []; // { name, thumbUrl, fileHandle }
+  let photos = []; // { name, thumbUrl, fileHandle } or { name, thumbUrl, blob } in IDB mode
   let lightboxIndex = -1;
 
-  // --- Browser support check ---
-  if (!("showDirectoryPicker" in window)) {
-    unsupportedOverlay.classList.remove("hidden");
-    return;
-  }
+  // --- Storage mode ---
+  const hasFileSystemAccess = "showDirectoryPicker" in window;
 
   // --- Init ---
   init();
 
   async function init() {
-    await restoreDirHandle();
+    if (hasFileSystemAccess) {
+      await restoreDirHandle();
+    }
+    updateFolderBanner();
     const savedDeviceId = localStorage.getItem("lite-camera-deviceId");
     await startCamera(savedDeviceId || undefined);
     await loadPhotosFromDir();
@@ -88,6 +88,49 @@ if ("serviceWorker" in navigator) {
     updateFolderBanner();
   }
 
+  // --- IndexedDB photo storage (fallback when File System Access API unavailable) ---
+  function openPhotoDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open("lite-camera-photos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("photos", { keyPath: "name" });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function savePhotoToIDB(name, blob, thumbUrl) {
+    const db = await openPhotoDB();
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").put({ name, blob, thumbUrl, timestamp: Date.now() });
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function loadPhotosFromIDB() {
+    const db = await openPhotoDB();
+    const tx = db.transaction("photos", "readonly");
+    const req = tx.objectStore("photos").getAll();
+    const records = await new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    records.sort((a, b) => b.timestamp - a.timestamp);
+    photos = records.map((r) => ({ name: r.name, thumbUrl: r.thumbUrl, blob: r.blob }));
+    renderFilmstrip();
+  }
+
+  async function deletePhotoFromIDB(name) {
+    const db = await openPhotoDB();
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").delete(name);
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   async function pickDirectory() {
     try {
       dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
@@ -111,6 +154,10 @@ if ("serviceWorker" in navigator) {
   }
 
   function updateFolderBanner() {
+    if (!hasFileSystemAccess) {
+      folderBanner.classList.add("hidden");
+      return;
+    }
     folderBanner.classList.toggle("hidden", dirHandle !== null);
   }
 
@@ -360,25 +407,36 @@ if ("serviceWorker" in navigator) {
     const now = new Date();
     const name = `photo-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
 
-    // Save to disk
-    const hasDirHandle = await ensureDirHandle();
-    if (hasDirHandle) {
+    // Save to disk or IndexedDB
+    if (!hasFileSystemAccess) {
       try {
-        const fileHandle = await dirHandle.getFileHandle(name, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-
-        // Generate thumbnail
         const thumbUrl = await createThumbnail(blob);
-        const photo = { name, thumbUrl, fileHandle };
-        photos.unshift(photo);
+        await savePhotoToIDB(name, blob, thumbUrl);
+        photos.unshift({ name, thumbUrl, blob });
         renderFilmstrip();
       } catch (err) {
-        console.error("Failed to save photo:", err);
-        // Directory might be gone — reset handle and re-prompt
-        dirHandle = null;
-        updateFolderBanner();
+        console.error("Failed to save photo to IndexedDB:", err);
+      }
+    } else {
+      const hasDirHandle = await ensureDirHandle();
+      if (hasDirHandle) {
+        try {
+          const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+
+          // Generate thumbnail
+          const thumbUrl = await createThumbnail(blob);
+          const photo = { name, thumbUrl, fileHandle };
+          photos.unshift(photo);
+          renderFilmstrip();
+        } catch (err) {
+          console.error("Failed to save photo:", err);
+          // Directory might be gone — reset handle and re-prompt
+          dirHandle = null;
+          updateFolderBanner();
+        }
       }
     }
 
@@ -453,6 +511,10 @@ if ("serviceWorker" in navigator) {
 
   async function loadPhotosFromDir() {
     photos = [];
+    if (!hasFileSystemAccess) {
+      await loadPhotosFromIDB();
+      return;
+    }
     if (!dirHandle) {
       renderFilmstrip();
       return;
@@ -509,12 +571,18 @@ if ("serviceWorker" in navigator) {
     lightboxIndex = index;
     const photo = photos[index];
 
-    // Load full-res image from file handle
-    photo.fileHandle.getFile().then((file) => {
-      const url = URL.createObjectURL(file);
+    // Load full-res image from file handle or IDB blob
+    if (photo.fileHandle) {
+      photo.fileHandle.getFile().then((file) => {
+        const url = URL.createObjectURL(file);
+        lightboxImg.onload = () => URL.revokeObjectURL(url);
+        lightboxImg.src = url;
+      });
+    } else {
+      const url = URL.createObjectURL(photo.blob);
       lightboxImg.onload = () => URL.revokeObjectURL(url);
       lightboxImg.src = url;
-    });
+    }
 
     lightbox.classList.remove("hidden");
     lightboxDelete.textContent = "Delete";
@@ -535,7 +603,8 @@ if ("serviceWorker" in navigator) {
   }
 
   async function deleteCurrentPhoto() {
-    if (lightboxIndex < 0 || !dirHandle) return;
+    if (lightboxIndex < 0) return;
+    if (hasFileSystemAccess && !dirHandle) return;
 
     // Two-click confirmation
     if (!lightboxDelete.classList.contains("confirm")) {
@@ -546,7 +615,11 @@ if ("serviceWorker" in navigator) {
 
     const photo = photos[lightboxIndex];
     try {
-      await dirHandle.removeEntry(photo.name);
+      if (hasFileSystemAccess) {
+        await dirHandle.removeEntry(photo.name);
+      } else {
+        await deletePhotoFromIDB(photo.name);
+      }
     } catch (err) {
       console.error("Failed to delete photo:", err);
     }
@@ -588,7 +661,9 @@ if ("serviceWorker" in navigator) {
     });
 
     captureBtn.addEventListener("click", capture);
-    pickFolderBtn.addEventListener("click", pickDirectory);
+    if (hasFileSystemAccess) {
+      pickFolderBtn.addEventListener("click", pickDirectory);
+    }
 
     const filmstripToggle = document.getElementById("filmstrip-toggle");
     const filmstripContainer = document.querySelector(".filmstrip-container");
